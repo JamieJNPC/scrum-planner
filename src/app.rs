@@ -1,7 +1,7 @@
 use std::os::unix::raw::uid_t;
-use egui::{Context, Grid};
-use crate::app::entities::{Member, Role};
-use crate::app::window_management::{render_member_window, render_role_window, MainAppData, RoleWindow, Screen, Window};
+use egui::{Context, Grid, Response, Ui};
+use crate::app::entities::{Feature, Member, Role};
+use crate::app::window_management::{MainAppData, RoleWindow, MemberOptions, Screen, Window, StoryOptions, FeatureOptions, ObjectiveOptions};
 
 mod entities;
 mod window_management;
@@ -22,8 +22,13 @@ impl Default for MainApp {
                 members: Vec::new(),
                 roles: Vec::new(),
                 role_window: RoleWindow::new(String::new(), String::new()),
+                member_creation_window: MemberOptions::new(&vec![]),
+                story_creation_window: StoryOptions::new(),
+                feature_creation_window: FeatureOptions {title: String::new()},
+                objective_creation_window: ObjectiveOptions::new(),
                 screen: Screen::SPRINTS,
-                window: Window::NONE
+                window: Window::NONE,
+                features: Vec::new(),
             }
         }
     }
@@ -70,26 +75,26 @@ impl eframe::App for MainApp {
                 });
                 ui.menu_button("Create", |ui| {
                     if ui.button("Role").clicked() {
-                        self.main_app_data.role_window.show = true;
+                        //self.main_app_data.role_window.show = true;
                         self.main_app_data.window = Window::ROLE;
                     }
                     if ui.button("Team Member").clicked() {
                         self.main_app_data.window = Window::MEMBER;
                     }
                     if ui.button("PI").clicked() {
-                        todo!()
+                        self.main_app_data.window = Window::PI;
                     }
                     if ui.button("Sprint").clicked() {
-                        todo!()
+                        self.main_app_data.window = Window::SPRINT;
                     }
                     if ui.button("Feature").clicked() {
-                        todo!()
-                    }
-                    if ui.button("Objective").clicked() {
-                        todo!()
+                        self.main_app_data.window = Window::FEATURE;
                     }
                     if ui.button("Story").clicked() {
-                        todo!()
+                        self.main_app_data.window = Window::STORY;
+                    }
+                    if ui.button("Objective").clicked() {
+                        self.main_app_data.window = Window::OBJECTIVE;
                     }
                 });
 
@@ -105,6 +110,9 @@ impl eframe::App for MainApp {
                 if ui.button("Members & Roles").clicked() {
                     self.main_app_data.screen = Screen::MEMBERS;
                 }
+                if ui.button("Features & Stories").clicked() {
+                    self.main_app_data.screen = Screen::FEATURES;
+                }
             })
         });
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -115,6 +123,9 @@ impl eframe::App for MainApp {
                 Screen::MEMBERS => {
                     self.render_member_screen(ctx, ui)
                 }
+                Screen::FEATURES => {
+                    self.render_features_screen(ctx, ui)
+                }
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -122,10 +133,19 @@ impl eframe::App for MainApp {
             });
             match self.main_app_data.window {
                 Window::ROLE => {
-                    render_role_window(&mut self.main_app_data, ctx, ui);
+                    self.render_role_window(ctx);
                 }
                 Window::MEMBER => {
-                    render_member_window(&mut self.main_app_data, ctx, ui);
+                    self.render_member_window(ctx);
+                }
+                Window::STORY => {
+                    self.render_story_window(ctx);
+                }
+                Window::FEATURE => {
+                    self.render_feature_window(ctx);
+                }
+                Window::OBJECTIVE => {
+                    self.render_objective_window(ctx);
                 }
                 _ => ()
             }
@@ -142,20 +162,25 @@ impl MainApp {
     fn render_member_screen(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         ui.heading("Roles");
         for role in self.main_app_data.roles.iter().to_owned() {
-            //ui.label(format!("{:?}", role));
             ui.add(Role::new(role.name.clone(), role.velocity));
         }
         ui.heading("Members");
-        for role in self.main_app_data.roles.iter().to_owned() {
-            //ui.label(format!("{:?}", role));
-            ui.add(Role::new(role.name.clone(), role.velocity));
+        for member in self.main_app_data.members.iter().to_owned() {
+            ui.add(member.clone());
+        }
+    }
+
+    fn render_features_screen(&mut self, ctx: &Context, ui: &mut egui::Ui) {
+        ui.heading("Features");
+        for feature in self.main_app_data.features.iter().to_owned() {
+            ui.separator();
+            ui.add(feature.clone());
         }
     }
 
     fn render_sprints_screen(&mut self, ctx: &Context, ui: &mut egui::Ui) {
-        ui.heading("sprints");
+        ui.heading("Sprints");
         for role in self.main_app_data.roles.iter().to_owned() {
-            //ui.label(format!("{:?}", role));
             ui.add(Role::new(role.name.clone(), role.velocity));
         }
     }
