@@ -120,7 +120,13 @@ pub struct StoryOptions {
 
 impl StoryOptions {
     pub fn new() -> Self {
-        StoryOptions {title: String::new(), description: String::new(), story_points: String::new(), feature: Feature {name: "None".to_string(), objectives: vec![]}, objective: Objective::new("None".to_string())}
+        StoryOptions {
+            title: String::new(),
+            description: String::new(),
+            story_points: String::new(),
+            feature: Feature::new(String::from("None")),
+            objective: Objective::new(String::from("None"))
+        }
     }
 }
 

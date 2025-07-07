@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign};
 use chrono::prelude::*;
-use egui::{Response, Ui, Widget};
+use egui::{Response, Sense, Ui, Widget};
 
 #[derive(Clone)]
 pub struct Capacity {
@@ -109,16 +109,29 @@ struct Sprint {
     stories: Vec<Story>
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq)]
+pub enum RenderMode {
+    OneLine,
+    Full,
+}
+
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 pub struct Story {
     pub name: String,
     pub story_points: f64,
     pub description: String,
+    pub render_mode: RenderMode
+}
+
+impl PartialEq for Story {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name)
+    }
 }
 
 impl Story {
     pub fn new(name: String, story_points: f64, description: String) -> Self {
-        Story{name, story_points, description}
+        Story{name, story_points, description, render_mode: RenderMode::Full}
     }
 }
 
@@ -144,12 +157,13 @@ impl Widget for Story {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 pub struct Objective {
     pub title: String,
-    pub stories: Vec<Story>
+    pub stories: Vec<Story>,
+    pub render_mode: RenderMode,
 }
 
 impl Objective {
     pub fn new(title: String) -> Self {
-        Objective{title, stories: vec![]}
+        Objective{title, stories: vec![], render_mode: RenderMode::OneLine}
     }
 
     pub fn add_story(&mut self, story: Story) {
@@ -163,14 +177,23 @@ impl PartialEq for Objective {
     }
 }
 impl Widget for Objective {
-    fn ui(self, ui: &mut Ui) -> Response {
+    fn ui(mut self, ui: &mut Ui) -> Response {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Title");
                 ui.label(&self.title);
             });
-            for story in &self.stories {
-                ui.add(story.clone());
+            if(self.render_mode == RenderMode::Full) {
+                ui.horizontal(|ui| {
+                    for story in self.stories.clone() {
+                        ui.vertical(|ui| {
+                            if ui.button("Delete Story").clicked() {
+                                self.stories.retain(|story2: &Story| !story.eq(story2))
+                            }
+                            ui.add(story.clone());
+                        });
+                    }
+                });
             }
         }).response
     }
@@ -180,11 +203,12 @@ impl Widget for Objective {
 pub struct Feature {
     pub(crate) name: String,
     pub(crate) objectives: Vec<Objective>,
+    pub render_mode: RenderMode
 }
 
 impl Feature {
     pub fn new(name: String) -> Self {
-        Feature {name, objectives: vec![]}
+        Feature {name, objectives: vec![], render_mode: RenderMode::Full}
     }
 
     pub fn get_title(&self) -> String {
@@ -208,16 +232,21 @@ impl Feature {
 impl Widget for Feature {
 
     fn ui(self, ui: &mut Ui) -> Response {
-        ui.vertical(|ui| {
+        //let response = ui.allocate_response(egui::vec2(100.0, 30.0), egui::Sense::click());
+        let response = ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Name");
                 ui.label(self.name);
             });
-            for objective in self.objectives {
-                //ui.label(objective.title.clone());
-                ui.add(objective.clone());
+            if (self.render_mode == RenderMode::Full) {
+                ui.label("Objectives");
+                for objective in self.objectives {
+                    //ui.label(objective.title.clone());
+                    ui.add(objective.clone());
+                }
             }
-        }).response
+        }).response;
+        response.interact(Sense::click())
     }
 }
 

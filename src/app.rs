@@ -1,6 +1,6 @@
 use std::os::unix::raw::uid_t;
 use egui::{Context, Grid, Response, Ui};
-use crate::app::entities::{Feature, Member, Role};
+use crate::app::entities::{Feature, Member, RenderMode, Role};
 use crate::app::window_management::{MainAppData, RoleWindow, MemberOptions, Screen, Window, StoryOptions, FeatureOptions, ObjectiveOptions};
 
 mod entities;
@@ -172,9 +172,23 @@ impl MainApp {
 
     fn render_features_screen(&mut self, ctx: &Context, ui: &mut egui::Ui) {
         ui.heading("Features");
-        for feature in self.main_app_data.features.iter().to_owned() {
+        for feature in self.main_app_data.features.clone() {
             ui.separator();
-            ui.add(feature.clone());
+            if ui.button("Delete Feature").clicked() {
+                self.main_app_data.features.retain(|feature2: &Feature| !feature.eq(&feature2))
+            }
+            if ui.add(feature.clone()).clicked() {
+                println!("Clicked");
+                let feature_mut = self.main_app_data.get_feature_mut(&feature.name).unwrap();
+                match feature_mut.render_mode {
+                    RenderMode::OneLine => {
+                        feature_mut.render_mode = RenderMode::Full;
+                    },
+                    RenderMode::Full => {
+                        feature_mut.render_mode = RenderMode::OneLine;
+                    }
+                }
+            }
         }
     }
 
