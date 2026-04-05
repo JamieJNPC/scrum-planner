@@ -1,73 +1,13 @@
-use std::ops::{Add, AddAssign};
+use std::ops::{Add};
 use chrono::prelude::*;
 use egui::{Response, Sense, Ui, Widget};
-
-#[derive(Clone)]
-pub struct Capacity {
-    pub label: String,
-    pub capacity: f64,
-}
-
-#[derive(Clone)]
-pub struct Capacities {
-    capacities: Vec<Capacity>,
-}
-
-impl Capacities {
-    pub fn new() -> Self {
-        Capacities {capacities: vec![]}
-    }
-
-    fn get_capacity_by_name(&self, name: &str) -> Option<&Capacity> {
-        self.capacities.iter().find(|c| c.label == name)
-    }
-
-    fn get_feature_capacity(&self) -> Capacity {
-        self.get_capacity_by_name("Feature").unwrap_or(&Capacity {
-            label: "Feature".to_string(),
-            capacity: 0.0
-        }).clone()
-    }
-}
-
-impl AddAssign for Capacities {
-    fn add_assign(&mut self, other: Self) {
-        for capacity_1 in other.capacities {
-            if self.capacities.iter().find(|c| c.label == capacity_1.label).is_none() {
-                self.capacities.push(capacity_1);
-            } else {
-                for capacity in self.capacities.iter_mut() {
-                    if capacity.label == capacity_1.label {
-                        capacity.capacity += capacity_1.capacity;
-                    }
-                }
-            }
-        }
-    }
-}
-impl Add for Capacities {
-    type Output = Capacities;
-    fn add(mut self, other: Self) -> Capacities {
-        for capacity_1 in other.capacities {
-            if self.capacities.iter().find(|c| c.label == capacity_1.label).is_none() {
-                self.capacities.push(capacity_1);
-            } else {
-                for capacity in self.capacities.iter_mut() {
-                    if capacity.label == capacity_1.label {
-                        capacity.capacity += capacity_1.capacity;
-                    }
-                }
-            }
-        };
-        return self;
-    }
-}
+use crate::app::model::pi::Sprint;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Member {
-    name: String,
-    role: Role,
-    capacity: f64,
+    pub name: String,
+    pub role: Role,
+    pub capacity: f64,
 }
 
 impl PartialEq for Member {
@@ -100,15 +40,6 @@ impl Member {
     }
 }
 
-struct PI {
-    sprints: Vec<Sprint>
-}
-
-struct Sprint {
-    days: Vec<Day>,
-    stories: Vec<Story>
-}
-
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq)]
 pub enum RenderMode {
     OneLine,
@@ -120,7 +51,8 @@ pub struct Story {
     pub name: String,
     pub story_points: f64,
     pub description: String,
-    pub render_mode: RenderMode
+    pub render_mode: RenderMode,
+    pub sprint: Sprint
 }
 
 impl PartialEq for Story {
@@ -130,12 +62,31 @@ impl PartialEq for Story {
 }
 
 impl Story {
-    pub fn new(name: String, story_points: f64, description: String) -> Self {
-        Story{name, story_points, description, render_mode: RenderMode::Full}
+    pub fn new(name: String, story_points: f64, description: String, sprint: Sprint) -> Self {
+        Story{name, story_points, description, render_mode: RenderMode::Full, sprint}
     }
 }
 
 impl Widget for Story {
+    fn ui(self, ui: &mut egui::Ui) -> Response {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label("Name");
+                ui.label(&self.name);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Story Points");
+                ui.label(self.story_points.to_string());
+            });
+            ui.horizontal(|ui| {
+                ui.label("Description");
+                ui.label(&self.description);
+            })
+        }).response
+    }
+}
+
+impl Widget for &Story {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
@@ -163,7 +114,7 @@ pub struct Objective {
 
 impl Objective {
     pub fn new(title: String) -> Self {
-        Objective{title, stories: vec![], render_mode: RenderMode::OneLine}
+        Objective{title, stories: vec![], render_mode: RenderMode::Full}
     }
 
     pub fn add_story(&mut self, story: Story) {
@@ -183,7 +134,7 @@ impl Widget for Objective {
                 ui.label("Title");
                 ui.label(&self.title);
             });
-            if(self.render_mode == RenderMode::Full) {
+            //if(self.render_mode == RenderMode::Full) {
                 ui.horizontal(|ui| {
                     for story in self.stories.clone() {
                         ui.vertical(|ui| {
@@ -194,7 +145,7 @@ impl Widget for Objective {
                         });
                     }
                 });
-            }
+            //}
         }).response
     }
 }
@@ -227,13 +178,21 @@ impl Feature {
         }
         return None;
     }
+
+    pub fn add_story_to_objective(&mut self, objective_name: &String, story: Story) {
+        for objective in self.objectives.iter_mut() {
+            if objective_name.eq(objective_name) {
+                objective.add_story(story);
+                return;
+            }
+        }
+    }
 }
 
 impl Widget for Feature {
 
     fn ui(self, ui: &mut Ui) -> Response {
-        //let response = ui.allocate_response(egui::vec2(100.0, 30.0), egui::Sense::click());
-        let response = ui.vertical(|ui| {
+        ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Name");
                 ui.label(self.name);
@@ -245,8 +204,7 @@ impl Widget for Feature {
                     ui.add(objective.clone());
                 }
             }
-        }).response;
-        response.interact(Sense::click())
+        }).response.interact(Sense::click())
     }
 }
 
@@ -256,12 +214,18 @@ impl PartialEq for Feature {
     }
 }
 
-struct Day {
-    date: NaiveDate,
-    morning_off: Vec<Member>,
-    afternoon_off: Vec<Member>,
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq)]
+pub(crate) struct Day {
+    pub date: NaiveDate,
+    pub morning_off: Vec<Member>,
+    pub afternoon_off: Vec<Member>,
 }
 
+impl Day {
+    pub fn new(date: NaiveDate) -> Self {
+        Day{date, morning_off: vec![], afternoon_off: vec![]}
+    }
+}
 /// Defines what percentage of a story point a man day is worth for a given role
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[derive(Clone)]
@@ -296,38 +260,3 @@ impl Widget for Role {
         }).response
     }
 }
-/*
-/// Calculates the total allocation for each capacity for an entire sprint
-fn calculate_capacities(members: &Vec<Member>, sprint: &Sprint, cm: f64,
-                        em: f64, support: f64, chm: f64) -> Capacities {
-    let mut res = Capacities::new(0.0, 0.0, 0.0, 0.0);
-    for day in &sprint.days {
-        res += calculate_capacity_for_day(members, &day, cm, em, support, chm);
-    }
-    res
-}
-
-/// Calculates the total allocation for each capacity for a given day
-/// param
-fn calculate_capacity_for_day(members: &Vec<Member>, day: &Day, cm: f64,
-                              em: f64, support: f64, chm: f64) -> Capacities {
-    let mut res = Capacities::new(0.0, 0.0, 0.0, 0.0);
-    for member in members.iter() {
-        res += calculate_capacity_for_member(member, day, cm, em, support, chm);
-    }
-    res
-}
-
-fn calculate_capacity_for_member(member: &Member, day: &Day, cm: f64,
-                                 em: f64, support: f64, chm: f64) -> Capacities {
-    let mut multiplier = 0.0;
-    if !day.morning_off.contains(member) {
-        multiplier += 0.5;
-    }
-    if !day.afternoon_off.contains(member) {
-        multiplier += 0.5;
-    }
-    let velocity = member.capacity * multiplier * member.role.velocity;
-    Capacities::new(cm * velocity, em * velocity, support * velocity, chm * velocity)
-}
- */

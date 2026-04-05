@@ -1,16 +1,24 @@
-use std::os::unix::raw::uid_t;
-use egui::{Context, Grid, Response, Ui};
-use crate::app::entities::{Feature, Member, RenderMode, Role};
-use crate::app::window_management::{MainAppData, RoleWindow, MemberOptions, Screen, Window, StoryOptions, FeatureOptions, ObjectiveOptions};
-
+use egui::Context;
+use crate::app::creation_windows::capacity_creation_window::CapacityCreationWindow;
+use crate::app::entities::{Feature, RenderMode, Role};
+use crate::app::main_app_data::MainAppData;
+use crate::app::window_data::{FeatureOptions, MemberOptions, ObjectiveOptions, PiOptions, RoleWindow, Screen, StoryOptions, Window, WindowData};
 mod entities;
 mod window_management;
+mod main_app_data;
+mod date_picker;
+mod window_data;
+mod sprints_screen;
+mod creation_windows;
+mod model;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct MainApp {
-    main_app_data: MainAppData
+    main_app_data: MainAppData,
+    #[serde(skip)]
+    window_data: WindowData
 }
 
 impl Default for MainApp {
@@ -18,17 +26,21 @@ impl Default for MainApp {
         Self {
             main_app_data: MainAppData {
                 // Example stuff:
-                label: "Hello World!".to_owned(),
                 members: Vec::new(),
                 roles: Vec::new(),
+                features: Vec::new(),
+                pis: Vec::new(),
+            },
+            window_data: WindowData {
                 role_window: RoleWindow::new(String::new(), String::new()),
                 member_creation_window: MemberOptions::new(&vec![]),
                 story_creation_window: StoryOptions::new(),
                 feature_creation_window: FeatureOptions {title: String::new()},
                 objective_creation_window: ObjectiveOptions::new(),
+                capacity_window: CapacityCreationWindow::new(),
+                pi_creation_window: PiOptions::empty(),
                 screen: Screen::SPRINTS,
                 window: Window::NONE,
-                features: Vec::new(),
             }
         }
     }
@@ -52,7 +64,7 @@ impl MainApp {
 
 impl eframe::App for MainApp {
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
@@ -76,25 +88,25 @@ impl eframe::App for MainApp {
                 ui.menu_button("Create", |ui| {
                     if ui.button("Role").clicked() {
                         //self.main_app_data.role_window.show = true;
-                        self.main_app_data.window = Window::ROLE;
+                        self.window_data.window = Window::ROLE;
                     }
                     if ui.button("Team Member").clicked() {
-                        self.main_app_data.window = Window::MEMBER;
+                        self.window_data.window = Window::MEMBER;
                     }
                     if ui.button("PI").clicked() {
-                        self.main_app_data.window = Window::PI;
+                        self.window_data.window = Window::PI;
                     }
                     if ui.button("Sprint").clicked() {
-                        self.main_app_data.window = Window::SPRINT;
+                        self.window_data.window = Window::SPRINT;
                     }
                     if ui.button("Feature").clicked() {
-                        self.main_app_data.window = Window::FEATURE;
+                        self.window_data.window = Window::FEATURE;
                     }
                     if ui.button("Story").clicked() {
-                        self.main_app_data.window = Window::STORY;
+                        self.window_data.window = Window::STORY;
                     }
                     if ui.button("Objective").clicked() {
-                        self.main_app_data.window = Window::OBJECTIVE;
+                        self.window_data.window = Window::OBJECTIVE;
                     }
                 });
 
@@ -105,18 +117,18 @@ impl eframe::App for MainApp {
             ui.heading("Side Panel");
             ui.vertical(|ui| {
                 if ui.button("PI's & Sprints").clicked() {
-                    self.main_app_data.screen = Screen::SPRINTS;
+                    self.window_data.screen = Screen::SPRINTS;
                 }
                 if ui.button("Members & Roles").clicked() {
-                    self.main_app_data.screen = Screen::MEMBERS;
+                    self.window_data.screen = Screen::MEMBERS;
                 }
                 if ui.button("Features & Stories").clicked() {
-                    self.main_app_data.screen = Screen::FEATURES;
+                    self.window_data.screen = Screen::FEATURES;
                 }
             })
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            match self.main_app_data.screen {
+            match self.window_data.screen {
                 Screen::SPRINTS => {
                     self.render_sprints_screen(ctx, ui)
                 },
@@ -124,14 +136,14 @@ impl eframe::App for MainApp {
                     self.render_member_screen(ctx, ui)
                 }
                 Screen::FEATURES => {
-                    self.render_features_screen(ctx, ui)
+                    self.render_features_screen(ctx, ui);
                 }
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 egui::warn_if_debug_build(ui);
             });
-            match self.main_app_data.window {
+            match self.window_data.window {
                 Window::ROLE => {
                     self.render_role_window(ctx);
                 }
@@ -146,6 +158,12 @@ impl eframe::App for MainApp {
                 }
                 Window::OBJECTIVE => {
                     self.render_objective_window(ctx);
+                },
+                Window::PI => {
+                    self.render_pi_window(ctx);
+                },
+                Window::CAPACITY => {
+                    
                 }
                 _ => ()
             }
@@ -178,7 +196,6 @@ impl MainApp {
                 self.main_app_data.features.retain(|feature2: &Feature| !feature.eq(&feature2))
             }
             if ui.add(feature.clone()).clicked() {
-                println!("Clicked");
                 let feature_mut = self.main_app_data.get_feature_mut(&feature.name).unwrap();
                 match feature_mut.render_mode {
                     RenderMode::OneLine => {
@@ -189,13 +206,6 @@ impl MainApp {
                     }
                 }
             }
-        }
-    }
-
-    fn render_sprints_screen(&mut self, ctx: &Context, ui: &mut egui::Ui) {
-        ui.heading("Sprints");
-        for role in self.main_app_data.roles.iter().to_owned() {
-            ui.add(Role::new(role.name.clone(), role.velocity));
         }
     }
 }
